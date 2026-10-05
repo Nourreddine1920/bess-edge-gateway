@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BESS Fleet Console</title>
+<style>
+  :root {
+    --bg: #0e1214; --panel: #161b1e; --line: #263035; --ink: #e6ecef; --mute: #8a989f;
+    --good: #3ecf8e; --warn: #f2b84b; --bad: #f2645a; --accent: #5cc8ff; --replay: #c792ea;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); }
+  header { display: flex; align-items: center; gap: 16px; padding: 14px 24px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  header .sub { color: var(--mute); font-size: 13px; }
+  .pill { font: 600 11px var(--mono); padding: 3px 8px; border-radius: 99px; border: 1px solid currentColor; text-transform: uppercase; letter-spacing: .5px; }
+  .ok { color: var(--good); } .warnc { color: var(--warn); } .badc { color: var(--bad); }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; padding: 20px 24px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  .sites { display: grid; gap: 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .card-head h2 { margin: 0; font: 600 15px var(--mono); }
+  .metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+  .m label { display: block; color: var(--mute); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  .m b { font: 600 20px var(--mono); }
+  .m small { color: var(--mute); font: 12px var(--mono); margin-left: 3px; }
+  .socbar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .socbar i { display: block; height: 100%; background: var(--accent); }
+  .chart { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .chart svg { width: 100%; height: 120px; display: block; }
+  .legend { display: flex; gap: 14px; color: var(--mute); font-size: 12px; margin-top: 4px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+  .alarms { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; min-height: 22px; }
+  .chip { font: 11px var(--mono); padding: 2px 7px; border-radius: 4px; background: rgba(242,100,90,.15); color: var(--bad); }
+  .cmd { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .cmd input { width: 90px; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 6px 8px; font: 13px var(--mono); }
+  button { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: 12px var(--sans); cursor: pointer; }
+  button:hover { border-color: var(--mute); }
+  button.primary { background: var(--accent); color: #062033; border-color: var(--accent); font-weight: 600; }
+  button.attack { color: var(--bad); border-color: rgba(242,100,90,.4); }
+  .cmd .sep { color: var(--mute); font-size: 12px; margin-left: 6px; }
+  aside h3 { margin: 0 0 10px; font-size: 13px; color: var(--mute); text-transform: uppercase; letter-spacing: .6px; }
+  .log { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px 0; max-height: calc(100vh - 130px); overflow: auto; }
+  .ev { padding: 8px 14px; border-left: 3px solid transparent; font-size: 13px; }
+  .ev + .ev { border-top: 1px solid var(--line); }
+  .ev .t { color: var(--mute); font: 11px var(--mono); }
+  .ev.good { border-left-color: var(--good); } .ev.bad { border-left-color: var(--bad); } .ev.warn { border-left-color: var(--warn); }
+  .empty { color: var(--mute); padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BESS Fleet Console</h1>
+  <span class="sub">Modbus field devices → edge gateway → MQTT over mutual TLS → cloud</span>
+  <span style="flex:1"></span>
+  <span id="broker" class="pill">broker …</span>
+</header>
+<main>
+  <section class="sites" id="sites"><div class="card empty">Waiting for gateways…</div></section>
+  <aside>
+    <h3>Event log</h3>
+    <div class="log" id="log"><div class="empty">No events yet</div></div>
+  </aside>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const fmt = (v, d = 1) => (v === null || v === undefined) ? "–" : Number(v).toFixed(d);
+const time = (ts) => new Date(ts * 1000).toLocaleTimeString();
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function statusPill(s) {
+  if (s.online === false) return '<span class="pill badc">offline</span>';
+  if (s.stale_s !== null && s.stale_s > 5) return `<span class="pill warnc">no data ${s.stale_s}s</span>`;
+  return '<span class="pill ok">online · mTLS</span>';
+}
+
+function chart(hist) {
+  if (hist.length < 2) return '<svg></svg>';
+  const W = 600, H = 120, t0 = hist[0].ts, t1 = hist[hist.length - 1].ts || t0 + 1;
+  const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * W;
+  const ys = (v) => H - 6 - (v / 100) * (H - 12);
+  const pmax = Math.max(50, ...hist.map((p) => Math.abs(p.power)));
+  const yp = (v) => H / 2 - (v / pmax) * (H / 2 - 8);
+  const path = (f) => hist.map((p, i) => `${i ? "L" : "M"}${x(p.ts).toFixed(1)},${f(p).toFixed(1)}`).join("");
+  const replay = hist.filter((p) => p.replayed).map((p) =>
+    `<circle cx="${x(p.ts).toFixed(1)}" cy="${ys(p.soc).toFixed(1)}" r="2" fill="var(--replay)"/>`).join("");
+  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+    <line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" stroke="var(--line)" stroke-dasharray="3 4"/>
+    <path d="${path((p) => yp(p.power))}" fill="none" stroke="var(--warn)" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+    <path d="${path((p) => ys(p.soc))}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>
+    ${replay}</svg>`;
+}
+
+function card(s) {
+  const l = s.latest || {};
+  const id = esc(s.site);
+  return `<div class="card">
+    <div class="card-head"><h2>${id}</h2>${statusPill(s)}</div>
+    <div class="metrics">
+      <div class="m"><label>State of charge</label><b>${fmt(l.soc_pct)}</b><small>%</small>
+        <div class="socbar"><i style="width:${l.soc_pct || 0}%"></i></div></div>
+      <div class="m"><label>Power</label><b>${fmt(l.power_kw)}</b><small>kW</small><div class="t" style="color:var(--mute);font-size:12px">${esc(l.state || "–")}</div></div>
+      <div class="m"><label>Setpoint</label><b>${fmt(l.setpoint_kw)}</b><small>kW</small></div>
+      <div class="m"><label>Cell temp max</label><b>${fmt(l.temp_max_c)}</b><small>°C</small></div>
+      <div class="m"><label>Replayed samples</label><b style="color:var(--replay)">${s.replayed_total}</b></div>
+    </div>
+    <div class="alarms">${(l.alarms || []).map((a) => `<span class="chip">${esc(a)}</span>`).join("")}</div>
+    <div class="chart">${chart(s.history)}
+      <div class="legend"><span style="--c:var(--accent)">SoC %</span><span style="--c:var(--warn)">Power kW (+ discharge)</span><span style="--c:var(--replay)">Replayed after outage</span></div></div>
+    <div class="cmd">
+      <input id="v-${id}" type="number" value="250" step="10" aria-label="setpoint kW">
+      <button class="primary" onclick="send('${id}','valid')">Send setpoint</button>
+      <button onclick="send('${id}','valid',0)">Stop (0 kW)</button>
+      <button onclick="diag('${id}')">Diagnostics</button>
+      <span class="sep">Attack tests:</span>
+      <button class="attack" onclick="send('${id}','out_of_range')">Out of range</button>
+      <button class="attack" onclick="send('${id}','expired')">Expired</button>
+      <button class="attack" onclick="send('${id}','bad_signature')">Forged signature</button>
+      <button class="attack" onclick="send('${id}','not_allowed')">Not allow-listed</button>
+    </div></div>`;
+}
+
+async function post(body) {
+  await fetch("/api/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  refresh();
+}
+function send(site, variant, forced) {
+  const v = forced !== undefined ? forced : Number($(`#v-${site}`).value);
+  post({ site, type: "set_power_kw", value: v, variant });
+}
+function diag(site) { post({ site, type: "get_diagnostics", value: null, variant: "valid" }); }
+
+const inputs = {};
+async function refresh() {
+  try {
+    const st = await (await fetch("/api/state")).json();
+    $("#broker").className = "pill " + (st.broker_connected ? "ok" : "badc");
+    $("#broker").textContent = st.broker_connected ? "cloud ↔ broker: connected" : "cloud ↔ broker: down";
+    document.querySelectorAll(".cmd input").forEach((i) => (inputs[i.id] = i.value));
+    const focused = document.activeElement && document.activeElement.id;
+    if (st.sites.length) $("#sites").innerHTML = st.sites.map(card).join("");
+    Object.entries(inputs).forEach(([k, v]) => { const el = document.getElementById(k); if (el) el.value = v; });
+    if (focused && document.getElementById(focused)) document.getElementById(focused).focus();
+    $("#log").innerHTML = st.events.length ? st.events.map((e) =>
+      `<div class="ev ${e.level}"><div class="t">${time(e.ts)} · ${esc(e.site)}</div>${esc(e.text)}</div>`).join("")
+      : '<div class="empty">No events yet</div>';
+  } catch (e) { $("#broker").className = "pill badc"; $("#broker").textContent = "cloud API unreachable"; }
+}
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

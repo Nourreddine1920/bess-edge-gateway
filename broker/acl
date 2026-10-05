@@ -1,0 +1,18 @@
+# Least privilege per identity (%u = certificate CN).
+# A gateway may only publish its OWN data and only read its OWN command topic.
+# A compromised gateway therefore cannot spoof another site or command anything.
+
+# Cloud service: reads all sites, is the only identity allowed to send commands
+user cloud-service
+topic read  bess/+/telemetry
+topic read  bess/+/status
+topic read  bess/+/events
+topic read  bess/+/cmd/ack
+topic write bess/+/cmd
+
+# Every gateway (pattern applies per connected identity)
+pattern write bess/%u/telemetry
+pattern write bess/%u/status
+pattern write bess/%u/events
+pattern write bess/%u/cmd/ack
+pattern read  bess/%u/cmd
