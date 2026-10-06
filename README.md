@@ -13,6 +13,13 @@ energy storage container and the cloud. Every claim below is something the demo 
  └───────────────────┘              └──────────────────────────┘          └─────────────────────┘
 ```
 
+## Live simulation (no install)
+
+`web/index.html` is a self-contained browser version of the whole pipeline, deployed on Vercel. It uses real Ed25519
+signing (WebCrypto) and a port of the 7-check command guard, and adds a price-driven cloud optimizer that compares a
+100 h iron-air battery with a 4 h Li-ion reference on the same prices. Press **Guided demo** for a 3-minute scripted tour.
+Modbus, TLS, the broker and the battery physics are modelled; the Python stack below is the real implementation.
+
 ## What it demonstrates
 
 | Requirement | How the prototype does it |

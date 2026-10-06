@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BESS Edge Gateway Simulation</title>
+<meta name="description" content="Browser simulation of a secure edge-to-cloud pipeline for multi-day battery storage: Modbus, store-and-forward, mTLS, signed commands, price-driven dispatch.">
+<style>
+  :root {
+    --bg: #0d1113; --panel: #151a1d; --panel2: #1a2125; --line: #263035; --ink: #e6ecef; --mute: #8a989f;
+    --good: #3ecf8e; --warn: #f2b84b; --bad: #f2645a; --accent: #5cc8ff; --replay: #c792ea; --iron: #e8884a;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    --sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 var(--sans); }
+  header { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 16px; padding: 12px 24px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: rgba(13,17,19,.94); backdrop-filter: blur(6px); z-index: 20; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--mute); font-size: 13px; }
+  .grow { flex: 1; }
+  .pill { font: 600 11px var(--mono); padding: 3px 8px; border-radius: 99px; border: 1px solid currentColor; text-transform: uppercase; letter-spacing: .5px; white-space: nowrap; }
+  .ok { color: var(--good); } .warnc { color: var(--warn); } .badc { color: var(--bad); } .rep { color: var(--replay); }
+  main { padding: 18px 24px 80px; display: grid; gap: 18px; max-width: 1500px; margin: 0 auto; }
+  .banner { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 8px; padding: 10px 14px; color: var(--mute); font-size: 13px; }
+  .banner b { color: var(--ink); font-weight: 600; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+  .card h2 { margin: 0 0 12px; font: 600 12px var(--sans); color: var(--mute); text-transform: uppercase; letter-spacing: .7px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 18px; align-items: start; }
+  @media (max-width: 1100px) { .layout { grid-template-columns: 1fr; } main { padding: 14px 14px 90px; } header { padding: 10px 14px; } }
+  .stack { display: grid; gap: 18px; min-width: 0; }
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .kpi label, .m label { display: block; color: var(--mute); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  .kpi b, .m b { font: 600 20px var(--mono); }
+  .kpi small, .m small { color: var(--mute); font: 12px var(--mono); margin-left: 3px; }
+  .kpi.hero b { color: var(--iron); }
+  svg.chart { width: 100%; display: block; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--mute); font-size: 12px; margin-top: 6px; }
+  .legend span::before { content: ""; display: inline-block; width: 10px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button, select { background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font: 12px var(--sans); cursor: pointer; }
+  button:hover:not(:disabled), select:hover { border-color: var(--mute); }
+  button:disabled { opacity: .4; cursor: default; }
+  select { background: var(--panel); }
+  button.primary { background: var(--accent); color: #062033; border-color: var(--accent); font-weight: 600; }
+  button.demo { background: var(--iron); color: #2a1100; border-color: var(--iron); font-weight: 700; }
+  button.attack { color: var(--bad); border-color: rgba(242,100,90,.4); }
+  button.cut { color: var(--warn); border-color: rgba(242,184,75,.45); }
+  input[type=number] { width: 84px; background: var(--bg); border: 1px solid var(--line); color: var(--ink); border-radius: 6px; padding: 6px 8px; font: 13px var(--mono); }
+  .switch { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; user-select: none; }
+  .switch input { accent-color: var(--iron); width: 16px; height: 16px; }
+  /* site card */
+  .site-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .site-head h3 { margin: 0; font: 600 15px var(--mono); }
+  .site-head small { color: var(--mute); font-size: 12px; margin-left: 8px; font-family: var(--sans); }
+  .flow { display: flex; align-items: center; gap: 6px; font: 11px var(--mono); color: var(--mute); margin-bottom: 14px; flex-wrap: wrap; }
+  .node { border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; background: var(--panel2); }
+  .link { position: relative; height: 2px; width: 46px; background: var(--line); }
+  .link.ok { background: var(--good); } .link.down { background: repeating-linear-gradient(90deg, var(--bad) 0 4px, transparent 4px 8px); }
+  .link i { position: absolute; top: -2px; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); opacity: 0; }
+  .link.pulse i { animation: travel .6s linear; }
+  .link.rp i { background: var(--replay); }
+  @keyframes travel { 0% { left: 0; opacity: 1 } 100% { left: 40px; opacity: 1 } }
+  .lt { font-size: 10px; color: var(--mute); text-transform: uppercase; letter-spacing: .4px; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 12px; }
+  .socbar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  .socbar i { display: block; height: 100%; background: var(--accent); transition: width .25s; }
+  .alarms { margin-top: 8px; display: flex; gap: 6px; flex-wrap: wrap; min-height: 22px; }
+  .chip { font: 11px var(--mono); padding: 2px 7px; border-radius: 4px; background: rgba(242,100,90,.15); color: var(--bad); }
+  .chip.m { background: rgba(232,136,74,.15); color: var(--iron); }
+  .cmd { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 8px; }
+  .cmd .lbl { color: var(--mute); font-size: 12px; margin-right: 4px; }
+  /* aside */
+  .steps { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin: 4px 0 8px; }
+  .step { text-align: center; font-size: 10px; color: var(--mute); padding: 6px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel2); line-height: 1.2; }
+  .step i { display: block; font-style: normal; font: 700 14px var(--mono); margin-bottom: 2px; }
+  .step.pass { color: var(--good); border-color: rgba(62,207,142,.4); } .step.fail { color: var(--bad); border-color: rgba(242,100,90,.6); background: rgba(242,100,90,.1); }
+  .step.skip { opacity: .35; }
+  .decision { font: 13px var(--mono); min-height: 20px; }
+  .log { max-height: 460px; overflow: auto; margin: 0 -16px -16px; border-top: 1px solid var(--line); }
+  .ev { padding: 7px 14px; border-left: 3px solid transparent; font-size: 13px; }
+  .ev + .ev { border-top: 1px solid var(--line); }
+  .ev .t { color: var(--mute); font: 11px var(--mono); }
+  .ev.good { border-left-color: var(--good); } .ev.bad { border-left-color: var(--bad); } .ev.warn { border-left-color: var(--warn); } .ev.info { border-left-color: var(--accent); }
+  .empty { color: var(--mute); padding: 18px; text-align: center; }
+  pre { margin: 0; font: 12px/1.5 var(--mono); color: #c9d4d9; white-space: pre-wrap; word-break: break-all; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 10px; max-height: 230px; overflow: auto; }
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 800px) { .two { grid-template-columns: 1fr; } }
+  .muted { color: var(--mute); font-size: 13px; }
+  ul.prod { margin: 0; padding-left: 18px; color: var(--mute); font-size: 13px; } ul.prod b { color: var(--ink); font-weight: 600; }
+  /* demo caption */
+  #caption { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); width: min(820px, calc(100vw - 24px)); background: #20150d; border: 1px solid var(--iron); border-radius: 10px; padding: 12px 16px; display: none; gap: 12px; align-items: center; z-index: 30; box-shadow: 0 8px 30px rgba(0,0,0,.5); }
+  #caption.on { display: flex; }
+  #caption .n { font: 700 12px var(--mono); color: var(--iron); white-space: nowrap; }
+  #caption .tx { flex: 1; font-size: 14px; }
+  .hl { animation: hl 1.6s ease-out 1; }
+  @keyframes hl { 0% { box-shadow: 0 0 0 3px var(--iron); } 100% { box-shadow: 0 0 0 3px transparent; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>BESS Edge Gateway</h1>
+  <span class="sub">Modbus → edge gateway → mutual-TLS MQTT → cloud · multi-day iron-air storage, simulated</span>
+  <span class="grow"></span>
+  <span class="pill" id="clock">–</span>
+  <select id="speed" aria-label="simulation speed">
+    <option value="15">15 min / s</option><option value="60" selected>1 h / s</option><option value="240">4 h / s</option>
+  </select>
+  <button id="pause">Pause</button>
+  <button class="demo" id="demoBtn">▶ Guided demo</button>
+</header>
+
+<main>
+  <div class="banner">
+    <b>What is real here:</b> command signing and verification use Ed25519 through your browser's WebCrypto, and the 7-check command guard is a line-by-line port of
+    <code>gateway/gateway.py</code>. <b>What is modelled:</b> Modbus, TLS handshakes, the broker, battery physics (illustrative iron-air parameters) and the synthetic price and wind series.
+    The full Python stack (Mosquitto, pymodbus, SQLite buffer) is in the repo and runs locally with <code>./demo.sh start</code>.
+  </div>
+
+  <section class="card" id="market">
+    <h2>Cloud optimizer · day-ahead price and dispatch</h2>
+    <div class="kpis">
+      <div class="kpi"><label>Price now</label><b id="k-price">–</b><small>€/MWh</small></div>
+      <div class="kpi"><label>Wind share</label><b id="k-wind">–</b><small>%</small></div>
+      <div class="kpi hero"><label>Iron-air fleet (100 h)</label><b id="k-iron">–</b><small>€ net</small></div>
+      <div class="kpi"><label>4 h Li-ion reference</label><b id="k-li">–</b><small>€ net</small></div>
+      <div class="kpi"><label>Multi-day advantage</label><b id="k-adv">–</b><small>€</small></div>
+    </div>
+    <svg class="chart" id="marketChart" viewBox="0 0 900 190" preserveAspectRatio="none" style="height:190px"></svg>
+    <div class="legend">
+      <span style="--c:var(--ink)">Price €/MWh (dashed = day-ahead forecast)</span><span style="--c:#6f8793">Wind share</span>
+      <span style="--c:var(--accent)">Site charging</span><span style="--c:var(--iron)">Site discharging</span>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="switch"><input type="checkbox" id="auto" checked> Auto-dispatch: optimizer sends signed setpoints through the secure pipeline</label>
+      <span class="muted">Li-ion reference = same power, 4 h of storage, 88 % round trip, same price signal, same rule (illustrative).</span>
+    </div>
+  </section>
+
+  <div class="layout">
+    <div class="stack" id="sites"></div>
+    <aside class="stack">
+      <section class="card" id="guardCard">
+        <h2>Edge command guard · last decision</h2>
+        <div class="steps" id="steps"></div>
+        <div class="decision" id="decision"><span class="muted">No command yet. Send one from a site card.</span></div>
+      </section>
+      <section class="card" style="padding-bottom:16px">
+        <h2>Event log</h2>
+        <div class="log" id="log"><div class="empty">No events yet</div></div>
+      </section>
+    </aside>
+  </div>
+
+  <section class="card" id="idCard">
+    <h2>Identity attacks (mutual TLS + broker ACL)</h2>
+    <div class="row">
+      <button class="attack" onclick="tlsAttack('nocert')">Connect without a certificate</button>
+      <button class="attack" onclick="tlsAttack('forged')">Connect with a forged certificate</button>
+      <button class="attack" onclick="tlsAttack('spoof')">Compromised site-02 gateway spoofs site-01</button>
+      <button onclick="tlsAttack('control')">Control: legitimate publish</button>
+    </div>
+    <pre id="tlsOut" style="margin-top:12px">Pick an attack. Each one shows what the broker does with it.</pre>
+  </section>
+
+  <section class="card" id="inspCard">
+    <h2>Pipeline inspector</h2>
+    <div class="row" style="margin-bottom:10px"><span class="muted">Site</span><select id="inspSite"></select><span class="muted" id="fp"></span></div>
+    <div class="two">
+      <div><div class="lt">1 · Modbus holding registers 0–11 (raw, as read by the gateway)</div><pre id="insRaw"></pre></div>
+      <div><div class="lt">2 · Normalised JSON (engineering units, published over MQTT)</div><pre id="insNorm"></pre></div>
+      <div><div class="lt">3 · Last signed command as it travels cloud → edge</div><pre id="insCmd"></pre></div>
+      <div><div class="lt">4 · Gateway verification</div><pre id="insVer"></pre></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>What I would change for production</h2>
+    <div class="two">
+      <ul class="prod">
+        <li><b>Keys in hardware:</b> secure element or TPM, zero-touch provisioning, offline root CA, short-lived certs with rotation and revocation.</li>
+        <li><b>Secure boot and OTA:</b> signed images, A/B partitions, automatic rollback, staged canary rollouts (RAUC, SWUpdate or Mender on Yocto).</li>
+        <li><b>Protocols:</b> IEC 61850 and IEC 60870-5-104 toward the EMS and TSO, OPC UA where needed, Sparkplug B for MQTT payloads.</li>
+      </ul>
+      <ul class="prod">
+        <li><b>Cloud:</b> managed broker, time-series database, alerting, a full audit log of every command tied to a user.</li>
+        <li><b>Edge autonomy:</b> a signed schedule with a validity window so the site keeps trading through long WAN outages, with local safety limits always winning.</li>
+        <li><b>Standards:</b> IEC 62443 zones and conduits, EU Cyber Resilience Act, NIS2.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<div id="caption"><span class="n" id="capN"></span><span class="tx" id="capT"></span><button id="capStop">Stop demo</button></div>
+
+<script>
+'use strict';
+/* ====================================================================== helpers */
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v)) ? "–" : Number(v).toFixed(d);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const enc = new TextEncoder();
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const clockStr = (h) => { const d = Math.floor(h / 24), hh = Math.floor(h % 24), mm = Math.floor((h * 60) % 60); return `${DAYS[((d % 7) + 7) % 7]} ${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`; };
+const uid = () => Math.random().toString(16).slice(2, 10);
+
+/* ====================================================================== market model (synthetic, deterministic, periodic over a week) */
+const gauss = (x, c, w) => Math.exp(-(((x - c) / w) ** 2));
+function wind(h) {
+  const t = ((h % 168) + 168) % 168;
+  const w = 0.45 + 0.22 * Math.sin(2 * Math.PI * t / 28 + 0.8) + 0.18 * Math.sin(2 * Math.PI * t / 84 + 2.1)
+    - 0.42 * gauss(t, 100, 22) + 0.38 * gauss(t, 34, 14);   // a multi-day calm spell and a storm
+  return clamp(w, 0.03, 1);
+}
+function price(h) {
+  const hr = ((h % 24) + 24) % 24, w = wind(h);
+  let p = 38 + 175 * (1 - w) ** 2
+    + 34 * (0.6 * gauss(hr, 8, 2) + gauss(hr, 19, 2.2) - 0.7 * gauss(hr, 13, 2.6));
+  if (w > 0.85) p -= 140 * (w - 0.85) / 0.15;
+  return clamp(p, -60, 380);
+}
+function quantiles(h0, h1, qs) {
+  const a = []; for (let t = h0; t <= h1; t += 1) a.push(price(t));
+  a.sort((x, y) => x - y);
+  return qs.map((q) => a[Math.floor(q * (a.length - 1))]);
+}
+
+/* ====================================================================== crypto: Ed25519 via WebCrypto (ECDSA P-256 fallback) */
+const K = { alg: null, name: "", cloud: null, attacker: null, fp: "" };
+async function initKeys() {
+  const mk = async (alg, gen) => crypto.subtle.generateKey(gen, true, ["sign", "verify"]);
+  try {
+    K.alg = { name: "Ed25519" }; K.name = "Ed25519";
+    K.cloud = await mk(K.alg, K.alg); K.attacker = await mk(K.alg, K.alg);
+  } catch (e) {
+    K.alg = { name: "ECDSA", hash: "SHA-256" }; K.name = "ECDSA P-256 (Ed25519 not available in this browser)";
+    const gen = { name: "ECDSA", namedCurve: "P-256" };
+    K.cloud = await mk(K.alg, gen); K.attacker = await mk(K.alg, gen);
+  }
+  const raw = await crypto.subtle.exportKey("raw", K.cloud.publicKey);
+  K.fp = hex(await crypto.subtle.digest("SHA-256", raw)).slice(0, 24);
+  $("#fp").textContent = `cloud command key: ${K.name} · SHA-256 ${K.fp}…`;
+}
+const canon = (cmd) => JSON.stringify(cmd, Object.keys(cmd).sort());
+const sign = async (cmd, key) => b64(await crypto.subtle.sign(K.alg, key.privateKey, enc.encode(canon(cmd))));
+
+/* ====================================================================== battery container (Modbus slave simulation) */
+const ALARMS = { 0: "over_temperature", 1: "low_soc", 2: "high_soc" };
+const STATES = { 0: "idle", 1: "charging", 2: "discharging", 3: "fault" };
+class Device {
+  constructor(o) {
+    Object.assign(this, o);
+    this.energy = o.kw * o.hours;                // kWh
+    this.etaC = this.etaD = Math.sqrt(o.rte);
+    this.soc = o.soc0; this.p = 0; this.setpoint = 0; this.state = 0; this.hb = 0; this.temp = 14;
+    this.alarms = 0; this.faultMin = 0; this.revenue = 0; this.cost = 0; this.basis = 40; // basis: €/MWh of stored energy
+    this.storedMWh = this.energy * this.soc / 100 / 1000;
+  }
+  step(dtMin, h) {
+    const dtH = dtMin / 60, pr = price(h + dtH / 2);
+    let target = clamp(this.setpoint, -this.kw, this.kw);       // defence in depth: the box clamps whatever it is told
+    if (this.faultMin > 0) { this.faultMin -= dtMin; target = 0; }
+    this.alarms = (this.faultMin > 0 ? 1 : 0) | (this.soc < 2 ? 2 : 0) | (this.soc > 98 ? 4 : 0);
+    if (this.soc <= 2 && target > 0) target = 0;                // local interlocks: SoC limits
+    if (this.soc >= 98 && target < 0) target = 0;
+    this.p += (target - this.p) * Math.min(1, dtMin / 4);
+    if (target === 0 && Math.abs(this.p) < 0.5) this.p = 0;
+    if (this.p > 0) {                                           // discharge: deliver p, drain p/eta from the store
+      const out = this.p * dtH / 1000, drain = out / this.etaD;
+      this.storedMWh = Math.max(0, this.storedMWh - drain); this.revenue += out * pr;
+    } else if (this.p < 0) {                                    // charge: buy g from the grid, store g*eta
+      const g = -this.p * dtH / 1000, st = g * this.etaC;
+      this.basis = (this.basis * this.storedMWh + g * pr) / Math.max(1e-9, this.storedMWh + st);
+      this.storedMWh += st; this.cost += g * pr;
+    }
+    this.soc = clamp(this.storedMWh * 1000 / this.energy * 100, 0, 100);
+    const amb = 10 + 4 * Math.sin(2 * Math.PI * (h % 24 - 15) / 24);
+    this.temp += (amb + 0.011 * Math.abs(this.p) + (this.faultMin > 0 ? 45 : 0) - this.temp) * Math.min(1, dtMin / 20);
+    this.state = this.faultMin > 0 ? 3 : this.p > 1 ? 2 : this.p < -1 ? 1 : 0;
+    this.hb = (this.hb + 1) & 0xFFFF;
+  }
+  regs() {
+    const u16 = (v) => Math.round(v) & 0xFFFF, v = 760 + this.soc * 0.9;
+    return [u16(this.soc * 10), u16(v * 10), u16(this.p * 1000 / v * 10), u16(this.p * 10), u16(this.temp * 10 + 3), u16(this.temp * 10 - 4),
+      this.alarms, this.state, 0, 0, u16(this.setpoint * 10), this.hb];
+  }
+}
+/* A virtual 4-hour Li-ion battery of the same power on the same prices, for contrast. */
+class LiRef {
+  constructor(kw) { this.kw = kw; this.E = kw * 4 / 1000; this.stored = this.E * 0.5; this.eta = Math.sqrt(0.88); this.basis = 60; this.rev = 0; this.cost = 0; }
+  step(dtH, h) {
+    const pr = price(h), [lo, hi] = quantiles(h - 12, h + 12, [0.3, 0.7]);
+    if (pr <= lo && this.stored < this.E) {
+      const g = Math.min(this.kw * dtH / 1000, (this.E - this.stored) / this.eta), st = g * this.eta;
+      this.basis = (this.basis * this.stored + g * pr) / Math.max(1e-9, this.stored + st); this.stored += st; this.cost += g * pr;
+    } else if (pr >= hi && this.stored > 0 && pr > this.basis / this.eta * 1.05) {
+      const out = Math.min(this.kw * dtH / 1000, this.stored * this.eta); this.stored -= out / this.eta; this.rev += out * pr;
+    }
+  }
+  get net() { return this.rev - this.cost; }
+}
+
+/* ====================================================================== sites */
+const WARM_H = 40;
+let simH = WARM_H, paused = false, speed = 60, acc = 0, warm = true, fleetEvents = [], logDirty = true;
+const SITES = [
+  { id: "gw-site-01", name: "Site 01", place: "Port of Amsterdam", kw: 500, hours: 100, rte: 0.55, soc0: 42 },
+  { id: "gw-site-02", name: "Site 02", place: "Eemshaven", kw: 250, hours: 100, rte: 0.55, soc0: 61 },
+].map((c, i) => ({
+  ...c, i, key: "s" + (i + 1), dev: new Device(c), li: new LiRef(c.kw),
+  gw: { buffer: [], seq: 0, seen: new Map(), replaying: false, replayCount: 0, replayStartedAt: 0, firstTs: 0 },
+  wan: { up: true, cutAt: 0, brokerQ: [] },
+  cloud: { history: [], latest: null, online: true, replayed: 0, mode: "idle", lastWill: 0, bufferedNow: 0 },
+  insp: { raw: [], norm: null, cmd: null, ver: null },
+  lastAccepted: null, lastCmdMsg: null, nextOpt: 0,
+}));
+const other = (s) => SITES[1 - s.i];
+
+function log(site, text, level = "info") {
+  if (warm) return;
+  fleetEvents.unshift({ ts: Date.now(), clock: clockStr(simH), site: site ? site.id : "fleet", text, level });
+  if (fleetEvents.length > 80) fleetEvents.pop();
+  logDirty = true;
+}
+
+/* ---------------- edge gateway: poll, normalise, write-ahead buffer, store-and-forward */
+function s16(v) { return v & 0x8000 ? v - 0x10000 : v; }
+function gwPoll(site) {
+  const h = site.dev.regs();                                    // "Modbus read_holding_registers(0, 12)"
+  const g = site.gw; g.seq++;
+  const sample = {
+    kind: "telemetry", site: site.id, seq: g.seq, simH, ts: Date.now() / 1000,
+    soc_pct: h[0] / 10, voltage_v: h[1] / 10, current_a: s16(h[2]) / 10, power_kw: s16(h[3]) / 10,
+    temp_max_c: s16(h[4]) / 10, temp_min_c: s16(h[5]) / 10,
+    alarms: Object.entries(ALARMS).filter(([bit]) => h[6] >> bit & 1).map(([, n]) => n),
+    state: STATES[h[7]] || "unknown", setpoint_kw: s16(h[10]) / 10, heartbeat: h[11],
+  };
+  g.lastSoc = sample.soc_pct;
+  site.insp.raw = h; site.insp.norm = sample;
+  gwPut(site, sample);                                          // write-ahead, always
+  if (!warm) pulse(site, "mb");
+}
+function gwPut(site, msg) {
+  const b = site.gw.buffer; b.push(msg);
+  if (b.length > 100000) b.shift();                             // bounded: oldest dropped first
+}
+function gwFlush(site) {
+  const g = site.gw;
+  if (!site.wan.up || !g.buffer.length) { if (site.wan.up && g.replaying && !g.buffer.length) finishReplay(site); return; }
+  const backlog = g.buffer.length;
+  if (backlog > 3 && !g.replaying) { g.replaying = true; g.replayCount = 0; g.replayStartedAt = Date.now(); g.firstTs = g.buffer[0].ts || Date.now() / 1000; }
+  const n = g.replaying ? Math.min(backlog, 60) : backlog;
+  for (let k = 0; k < n; k++) {
+    const m = g.buffer.shift();                                 // deleted only after the broker "ACKs" (instant here)
+    if (g.replaying && m.kind === "telemetry") { m.replayed = true; g.replayCount++; }
+    cloudIngest(site, m);
+  }
+  if (!warm) pulse(site, "wan", g.replaying);
+  if (g.replaying && !g.buffer.length) finishReplay(site);
+}
+function finishReplay(site) {
+  const g = site.gw; g.replaying = false;
+  log(site, `Gateway replayed ${g.replayCount} buffered samples after reconnect: nothing lost (outage ${Math.round((Date.now() / 1000 - g.firstTs))} s real time).`, "good");
+}
+
+/* ---------------- cloud: ingest, status, optimizer, command signing */
+function cloudIngest(site, m) {
+  const c = site.cloud;
+  if (m.kind === "telemetry") {
+    c.history.push({ t: m.simH, soc: m.soc_pct, power: m.power_kw, replayed: !!m.replayed });
+    if (m.replayed) { c.replayed++; c.history.sort((a, b) => a.t - b.t); }
+    const cut = simH - 80; while (c.history.length && c.history[0].t < cut) c.history.shift();
+    if (!c.latest || m.simH >= c.latest.simH) c.latest = m;
+  } else if (m.kind === "ack") {
+    const tag = m.auto ? "auto · " : "";
+    if (m.status === "accepted") log(site, `${tag}${m.type} ${m.value ?? ""} accepted by the gateway`, m.auto ? "info" : "good");
+    else log(site, `${tag}${m.type} ${m.value ?? ""} REJECTED: ${m.reason}`, "bad");
+  }
+}
+function setOnline(site, on, why) {
+  if (site.cloud.online === on) return;
+  site.cloud.online = on;
+  log(site, on ? "Gateway reconnected (retained status = online)" : why, on ? "good" : "warn");
+}
+function sendSetpoint(site, kw, auto) {
+  if (warm) { site.dev.setpoint = kw; return; }
+  sendCommand(site, "set_power_kw", kw, "valid", auto);
+}
+function optimize(site) {
+  const opt = $("#auto").checked, c = site.cloud;
+  if (!opt || !c.online || !c.latest) return;
+  if (c.latest.state === "fault") { if (c.mode !== "idle") { c.mode = "idle"; sendSetpoint(site, 0, true); } return; }
+  const p = price(simH), soc = c.latest.soc_pct, [lo, hi] = quantiles(simH - 48, simH + 36, [0.3, 0.7]);
+  let want = "idle";
+  if (p <= lo && soc < 96) want = "charge";
+  else if (p >= hi && soc > 4 && p > site.dev.basis / site.dev.etaD * 1.05) want = "discharge";
+  if (want !== c.mode) { c.mode = want; sendSetpoint(site, want === "charge" ? -site.kw : want === "discharge" ? site.kw : 0, true); }
+}
+
+async function sendCommand(site, type, value, variant = "valid", auto = false) {
+  const now = Date.now() / 1000;
+  let cmd = { id: uid(), site: site.id, type, value, issued_at: now, ttl_s: 8 };
+  let key = K.cloud, tamper = null;
+  switch (variant) {
+    case "out_of_range": cmd.value = 900; break;
+    case "expired": cmd.issued_at = now - 120; break;
+    case "bad_signature": key = K.attacker; break;
+    case "tampered": cmd.value = 10; tamper = 400; break;
+    case "not_allowed": cmd.type = "reboot"; cmd.value = null; break;
+    case "wrong_site": cmd.site = other(site).id; break;
+    case "replay":
+      if (!site.lastAccepted) { await sendCommand(site, "set_power_kw", 50, "valid"); await sleep(700); }
+      deliver(site, structuredClone(site.lastAccepted), "replay"); return;
+  }
+  const msg = { cmd, sig: await sign(cmd, key) };
+  if (tamper !== null) msg.cmd = { ...cmd, value: tamper };       // attacker edits the payload after it was signed
+  if (auto) msg.auto = true;
+  deliver(site, msg, variant);
+}
+function deliver(site, msg, variant) {
+  site.lastCmdMsg = msg;
+  if (!msg.auto) log(site, `Cloud → ${site.id}: ${msg.cmd.type} ${msg.cmd.value ?? ""}${variant !== "valid" ? `  [${variant.replaceAll("_", " ")}]` : ""}  (signed, ${K.name.split(" ")[0]})`, "info");
+  if (site.wan.up) { pulse(site, "cmd"); setTimeout(() => gwReceive(site, msg), 250); }
+  else { site.wan.brokerQ.push(msg); log(site, "Link down: broker queues the command for the gateway (persistent session).", "warn"); }
+}
+
+/* ---------------- edge command guard: the 7 checks of gateway.py */
+const GUARD_STEPS = ["Signature", "Target site", "Allow-list", "Freshness", "Replay", "Range", "Interlock"];
+async function guardCheck(site, msg) {
+  const st = GUARD_STEPS.map(() => "skip"), cmd = msg.cmd;
+  const res = (i, ok, reason) => { st[i] = ok ? "pass" : "fail"; return { ok, reason, st }; };
+  const fail = (i, reason) => res(i, false, reason);
+  if (!cmd || typeof cmd !== "object" || typeof msg.sig !== "string") return fail(0, "malformed message");
+  let valid = false;
+  try { valid = await crypto.subtle.verify(K.alg, K.cloud.publicKey, unb64(msg.sig), enc.encode(canon(cmd))); } catch (e) { valid = false; }
+  if (!valid) return fail(0, "invalid signature");
+  st[0] = "pass";
+  if (cmd.site !== site.id) return fail(1, "wrong target site");
+  st[1] = "pass";
+  if (!["set_power_kw", "get_diagnostics"].includes(cmd.type)) return fail(2, `command type '${cmd.type}' not allowed`);
+  st[2] = "pass";
+  const now = Date.now() / 1000, age = now - cmd.issued_at;
+  if (cmd.issued_at > now + 5 || age > cmd.ttl_s) return fail(3, `expired (age ${age.toFixed(0)} s > ttl ${cmd.ttl_s} s)`);
+  st[3] = "pass";
+  const seen = site.gw.seen; for (const [k, t] of seen) if (now - t > 3600) seen.delete(k);
+  if (seen.has(cmd.id)) return fail(4, "replayed command id");
+  seen.set(cmd.id, now); st[4] = "pass";
+  if (cmd.type === "set_power_kw") {
+    const v = cmd.value, soc = site.gw.lastSoc;
+    if (typeof v !== "number" || Math.abs(v) > site.kw) return fail(5, `value ${v} kW outside ±${site.kw} kW`);
+    st[5] = "pass";
+    if (v > 0 && soc < 5) return fail(6, "interlock: SoC too low to discharge");
+    if (v < 0 && soc > 95) return fail(6, "interlock: SoC too high to charge");
+  } else st[5] = "pass";
+  return res(6, true, "accepted");
+}
+let lastDecision = null;
+async function gwReceive(site, msg) {
+  const r = await guardCheck(site, msg);
+  const cmd = msg.cmd || {};
+  const ack = { kind: "ack", site: site.id, id: cmd.id, type: cmd.type, value: cmd.value, status: r.ok ? "accepted" : "rejected", reason: r.reason, auto: !!msg.auto, ts: Date.now() / 1000 };
+  if (r.ok && cmd.type === "set_power_kw") { site.dev.setpoint = cmd.value; site.lastAccepted = structuredClone(msg); }
+  if (r.ok && cmd.type === "get_diagnostics") {
+    ack.diagnostics = { uptime_s: Math.round(performance.now() / 1000), buffer_rows: site.gw.buffer.length, modbus_ok: true, samples_sent_seq: site.gw.seq };
+    log(site, "Diagnostics: " + JSON.stringify(ack.diagnostics), "info");
+  }
+  site.insp.cmd = msg;
+  site.insp.ver = { ...r, at: new Date().toLocaleTimeString(), cmdId: cmd.id };
+  if (!msg.auto || !r.ok) lastDecision = { ...r, site: site.id, cmd, auto: !!msg.auto };
+  gwPut(site, ack); gwFlush(site);
+  renderDecision();
+}
+
+/* ====================================================================== simulation loop */
+function substep(dtMin) {
+  const dtH = dtMin / 60;
+  for (const s of SITES) {
+    s.dev.step(dtMin, simH); s.li.step(dtH, simH);   // site physics at the current clock
+  }
+  simH += dtH;
+  for (const s of SITES) {
+    gwPoll(s); gwFlush(s);
+    if (simH >= s.nextOpt) { s.nextOpt = simH + 0.5; optimize(s); }
+  }
+}
+function frame() {
+  if (!paused) {
+    acc += speed * 0.25;
+    while (acc >= 15) { substep(15); acc -= 15; }
+  }
+  const now = Date.now();
+  for (const s of SITES) {
+    gwFlush(s);
+    if (!s.wan.up && s.cloud.online && now - s.wan.cutAt > 3000) setOnline(s, false, "Broker published the Last Will: gateway offline (keepalive missed).");
+  }
+  render();
+}
+
+/* ====================================================================== actions */
+function pulse(site, which, rp) {
+  const el = document.getElementById(`${site.key}-l-${which}`); if (!el) return;
+  el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); el.classList.toggle("rp", !!rp);
+}
+function toggleWan(site) {
+  const w = site.wan;
+  if (w.up) { w.up = false; w.cutAt = Date.now(); log(site, "WAN link cut. Gateway keeps polling and buffering to disk.", "warn"); }
+  else {
+    w.up = true; log(site, "WAN link restored. Gateway reconnects with its certificate and drains the buffer in order.", "good");
+    setOnline(site, true);
+    const q = w.brokerQ.splice(0); q.forEach((m, k) => setTimeout(() => gwReceive(site, m), 300 + 200 * k));
+  }
+}
+function injectFault(site) { site.dev.faultMin = 120; log(site, "BMS fault injected (over-temperature). Local safety opens the contactor: power → 0.", "warn"); }
+function directWrite(site) {
+  const before = site.dev.setpoint; site.dev.setpoint = 900;
+  log(site, "Direct Modbus write of 900 kW, bypassing the gateway (unauthenticated protocol, on the isolated LAN only). The container clamps it to its own limit.", "warn");
+  setTimeout(() => { site.dev.setpoint = before; }, 4000);
+}
+function sendUi(site, variant, forced) {
+  const v = forced !== undefined ? forced : Number(document.getElementById(`${site.key}-v`).value);
+  sendCommand(site, "set_power_kw", v, variant);
+}
+
+function tlsAttack(kind) {
+  const out = $("#tlsOut"), s1 = SITES[0], s2 = SITES[1];
+  const T = {
+    nocert: ["Attacker → broker :8883  ClientHello", "Broker → attacker  ServerHello, Certificate, CertificateRequest", "Attacker → broker  Certificate (empty)",
+      "Broker  tlsv13 alert certificate required", "Connection closed. 0 MQTT bytes parsed, nothing reaches the ACL or the application.", "RESULT: refused at the TLS handshake."],
+    forged: ["Attacker → broker :8883  ClientHello", "Attacker presents cert CN=gw-site-01, issued by 'Evil Root CA'", "Broker verifies the chain against its own CA (ca.crt)",
+      "Broker  tlsv1 alert unknown ca", "Connection closed.", "RESULT: refused at the TLS handshake. Knowing the site name is not enough, the CA's signature is."],
+    spoof: [`Compromised ${s2.id} cert is valid: TLS handshake OK, MQTT username = CN = ${s2.id}`,
+      `PUBLISH bess/${s1.id}/telemetry  {"soc_pct": 99, ...}`, `Broker ACL: ${s2.id} may write only bess/${s2.id}/#  → message dropped`,
+      `SUBSCRIBE bess/${s1.id}/cmd → ACL: not permitted, no data delivered`, "Cloud sees no spoofed data. One stolen gateway cannot impersonate or command another site.", "RESULT: blast radius = that one site."],
+    control: [`${s1.id} (CN=${s1.id}) TLS handshake OK`, `PUBLISH bess/${s1.id}/telemetry → ACL allows own topic → delivered to the cloud`, "RESULT: accepted. The listener does receive genuine data, so the refusals above are real refusals."],
+  }[kind];
+  out.textContent = T.join("\n");
+  const lv = kind === "control" ? "good" : "bad";
+  log(null, { nocert: "TLS: client without certificate refused", forged: "TLS: forged certificate refused (unknown CA)", spoof: "ACL: site-02 cert tried to publish as site-01, dropped", control: "TLS/ACL: legitimate publish accepted" }[kind], lv);
+}
+
+/* ====================================================================== rendering */
+function buildSites() {
+  $("#sites").innerHTML = SITES.map((s) => `
+  <section class="card" id="${s.key}">
+    <div class="site-head"><h3>${s.id}<small>${s.place} · ${s.kw} kW / ${(s.kw * s.hours / 1000).toFixed(0)} MWh · ${s.hours} h iron-air</small></h3><span class="pill" id="${s.key}-pill">–</span></div>
+    <div class="flow">
+      <span class="node">BESS container<br><span class="lt">BMS + PCS</span></span>
+      <span class="link" id="${s.key}-l-mb"><i></i></span><span class="lt">Modbus<br>TCP</span>
+      <span class="node">Edge gateway<br><span class="lt">buffer <b id="${s.key}-buf">0</b></span></span>
+      <span class="link ok" id="${s.key}-l-wan"><i></i></span><span class="lt" id="${s.key}-wanl">MQTT<br>mTLS</span>
+      <span class="node">Broker → Cloud</span>
+      <span class="link" id="${s.key}-l-cmd" style="transform:scaleX(-1)"><i></i></span><span class="lt">signed<br>commands</span>
+    </div>
+    <div class="metrics">
+      <div class="m"><label>State of charge</label><b id="${s.key}-soc">–</b><small>%</small><div class="socbar"><i id="${s.key}-socbar"></i></div></div>
+      <div class="m"><label>Power</label><b id="${s.key}-pw">–</b><small>kW</small><div class="lt" id="${s.key}-state">–</div></div>
+      <div class="m"><label>Setpoint</label><b id="${s.key}-sp">–</b><small>kW</small></div>
+      <div class="m"><label>Stack temp</label><b id="${s.key}-tp">–</b><small>°C</small></div>
+      <div class="m"><label>Replayed</label><b id="${s.key}-rp" style="color:var(--replay)">0</b></div>
+      <div class="m"><label>Net revenue</label><b id="${s.key}-rev">–</b><small>€</small></div>
+    </div>
+    <div class="alarms" id="${s.key}-alarms"></div>
+    <svg class="chart" id="${s.key}-chart" viewBox="0 0 600 130" preserveAspectRatio="none" style="height:130px;margin-top:6px"></svg>
+    <div class="legend"><span style="--c:var(--accent)">SoC % (last 72 h)</span><span style="--c:var(--warn)">Power kW (+ discharge)</span><span style="--c:var(--replay)">Replayed after outage</span></div>
+    <div class="cmd">
+      <div class="row">
+        <input id="${s.key}-v" type="number" value="250" step="10" aria-label="setpoint kW">
+        <button class="primary" onclick="sendUi(SITES[${s.i}],'valid')">Send setpoint</button>
+        <button onclick="sendUi(SITES[${s.i}],'valid',0)">Stop</button>
+        <button onclick="sendCommand(SITES[${s.i}],'get_diagnostics',null)">Diagnostics</button>
+      </div>
+      <div class="row"><span class="lbl">Network</span>
+        <button class="cut" id="${s.key}-cut" onclick="toggleWan(SITES[${s.i}])">✂ Cut WAN</button>
+        <button onclick="injectFault(SITES[${s.i}])">Inject BMS fault</button>
+        <button onclick="directWrite(SITES[${s.i}])">Write 900 kW straight to Modbus</button>
+      </div>
+      <div class="row"><span class="lbl">Command attacks</span>
+        <button class="attack" onclick="sendUi(SITES[${s.i}],'out_of_range')">Out of range</button>
+        <button class="attack" onclick="sendUi(SITES[${s.i}],'expired')">Expired</button>
+        <button class="attack" onclick="sendUi(SITES[${s.i}],'bad_signature')">Forged signature</button>
+        <button class="attack" onclick="sendUi(SITES[${s.i}],'tampered')">Tampered payload</button>
+        <button class="attack" onclick="sendUi(SITES[${s.i}],'not_allowed')">Not allow-listed</button>
+        <button class="attack" onclick="sendUi(SITES[${s.i}],'wrong_site')">Wrong site</button>
+        <button class="attack" onclick="sendUi(SITES[${s.i}],'replay')">Replay</button>
+      </div>
+    </div>
+  </section>`).join("");
+  $("#inspSite").innerHTML = SITES.map((s) => `<option value="${s.i}">${s.id}</option>`).join("");
+  $("#steps").innerHTML = GUARD_STEPS.map((n, i) => `<div class="step" id="st${i}"><i>${i + 1}</i>${n}</div>`).join("");
+}
+const set = (id, v) => { const e = document.getElementById(id); if (e && e.textContent !== v) e.textContent = v; };
+
+function siteChart(s) {
+  const W = 600, H = 130, t1 = simH, t0 = t1 - 72, x = (t) => (t - t0) / 72 * W;
+  const ys = (v) => H - 8 - v / 100 * (H - 16), pm = s.kw * 1.05, yp = (v) => H / 2 - v / pm * (H / 2 - 6);
+  const hist = s.cloud.history.filter((p) => p.t >= t0 - 1);
+  const path = (f) => { let d = "", prev = null; for (const p of hist) { d += `${prev === null || p.t - prev > 0.6 ? "M" : "L"}${x(p.t).toFixed(1)},${f(p).toFixed(1)}`; prev = p.t; } return d; };
+  let grid = ""; for (let d = Math.ceil(t0 / 24) * 24; d <= t1; d += 24) grid += `<line x1="${x(d).toFixed(1)}" x2="${x(d).toFixed(1)}" y1="0" y2="${H}" stroke="var(--line)"/><text x="${(x(d) + 3).toFixed(1)}" y="10" fill="var(--mute)" font-size="9" font-family="monospace">${DAYS[(d / 24) % 7]}</text>`;
+  const lastT = hist.length ? hist[hist.length - 1].t : t1;
+  const gap = !s.cloud.online ? `<rect x="${x(lastT).toFixed(1)}" y="0" width="${(W - x(lastT)).toFixed(1)}" height="${H}" fill="rgba(242,100,90,.10)"/>` : "";
+  const dots = hist.filter((p) => p.replayed).map((p) => `<circle cx="${x(p.t).toFixed(1)}" cy="${ys(p.soc).toFixed(1)}" r="2" fill="var(--replay)"/>`).join("");
+  return `${grid}${gap}<line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" stroke="var(--line)" stroke-dasharray="3 4"/>
+    <path d="${path((p) => yp(p.power))}" fill="none" stroke="var(--warn)" stroke-width="1.2" vector-effect="non-scaling-stroke"/>
+    <path d="${path((p) => ys(p.soc))}" fill="none" stroke="var(--accent)" stroke-width="2" vector-effect="non-scaling-stroke"/>${dots}`;
+}
+function marketChart() {
+  const W = 900, H = 190, t0 = simH - 36, t1 = simH + 48, x = (t) => (t - t0) / (t1 - t0) * W;
+  const pts = []; for (let t = t0; t <= t1; t += 0.5) pts.push([t, price(t), wind(t)]);
+  const ymin = Math.min(-20, ...pts.map((p) => p[1])), ymax = Math.max(120, ...pts.map((p) => p[1])), top = 8, bot = H - 26;
+  const y = (v) => bot - (v - ymin) / (ymax - ymin) * (bot - top), yw = (w) => bot - w * (bot - top);
+  const line = (arr, f) => arr.map((p, i) => `${i ? "L" : "M"}${x(p[0]).toFixed(1)},${f(p).toFixed(1)}`).join("");
+  const past = pts.filter((p) => p[0] <= simH), fut = pts.filter((p) => p[0] >= simH - 0.5);
+  let grid = ""; for (let d = Math.ceil(t0 / 24) * 24; d <= t1; d += 24) grid += `<line x1="${x(d).toFixed(1)}" x2="${x(d).toFixed(1)}" y1="0" y2="${bot}" stroke="var(--line)"/><text x="${(x(d) + 3).toFixed(1)}" y="10" fill="var(--mute)" font-size="10" font-family="monospace">${DAYS[(d / 24) % 7]}</text>`;
+  let bands = "";
+  SITES.forEach((s, k) => s.cloud.history.forEach((p) => {
+    if (p.t < t0 || Math.abs(p.power) < s.kw * 0.04) return;
+    bands += `<rect x="${x(p.t).toFixed(1)}" y="${bot + 4 + k * 9}" width="${Math.max(1.2, x(t0 + 0.25) - x(t0)).toFixed(1)}" height="7" fill="${p.power > 0 ? "var(--iron)" : "var(--accent)"}" opacity="${(0.35 + 0.65 * Math.abs(p.power) / s.kw).toFixed(2)}"/>`;
+  }));
+  return `${grid}<line x1="0" x2="${W}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--line)" stroke-dasharray="3 4"/>
+    <rect x="${x(simH).toFixed(1)}" y="0" width="${(W - x(simH)).toFixed(1)}" height="${bot}" fill="rgba(255,255,255,.025)"/>
+    <path d="${line(pts, (p) => yw(p[2]))}" fill="none" stroke="#6f8793" stroke-width="1" opacity=".7" vector-effect="non-scaling-stroke"/>
+    <path d="${line(past, (p) => y(p[1]))}" fill="none" stroke="var(--ink)" stroke-width="1.8" vector-effect="non-scaling-stroke"/>
+    <path d="${line(fut, (p) => y(p[1]))}" fill="none" stroke="var(--ink)" stroke-width="1.5" stroke-dasharray="5 4" vector-effect="non-scaling-stroke"/>
+    <line x1="${x(simH).toFixed(1)}" x2="${x(simH).toFixed(1)}" y1="0" y2="${H}" stroke="var(--iron)" stroke-width="1.5"/>
+    <text x="4" y="${y(ymax) + 10}" fill="var(--mute)" font-size="10" font-family="monospace">${Math.round(ymax)}</text>
+    <text x="4" y="${bot - 2}" fill="var(--mute)" font-size="10" font-family="monospace">${Math.round(ymin)}</text>${bands}`;
+}
+function renderDecision() {
+  const d = lastDecision;
+  GUARD_STEPS.forEach((_, i) => { const el = document.getElementById("st" + i); if (el) el.className = "step " + (d ? d.st[i] : ""); });
+  if (!d) return;
+  const c = d.cmd || {};
+  $("#decision").innerHTML = `<b class="${d.ok ? "ok" : "badc"}">${d.ok ? "ACCEPTED" : "REJECTED"}</b> · ${esc(d.reason)}<br><span class="muted">${esc(d.site)} · ${esc(c.type)} ${esc(c.value ?? "")}${d.auto ? " · auto" : ""}</span>`;
+}
+function renderInspector() {
+  const s = SITES[Number($("#inspSite").value)], i = s.insp;
+  $("#insRaw").textContent = i.raw.length ? i.raw.map((v, k) => `[${String(k).padStart(2)}] 0x${v.toString(16).padStart(4, "0")}  ${String(v).padStart(5)}`).join("\n") : "…";
+  const n = i.norm; $("#insNorm").textContent = n ? JSON.stringify({ ...n, simH: undefined, kind: undefined }, null, 1) : "…";
+  const m = i.cmd || s.lastCmdMsg;
+  $("#insCmd").textContent = m ? JSON.stringify({ cmd: m.cmd, sig: m.sig.slice(0, 44) + "…" }, null, 1) : "No command sent yet.";
+  const v = i.ver;
+  $("#insVer").textContent = v ? `${v.at}  command ${v.cmdId}\n${GUARD_STEPS.map((nm, k) => `${k + 1}. ${nm.padEnd(12)} ${v.st[k].toUpperCase()}`).join("\n")}\n→ ${v.ok ? "ACCEPTED, written to Modbus register 10" : "REJECTED: " + v.reason}` : "Waiting for a command.";
+}
+let lastLogRender = 0;
+function render() {
+  set("clock", clockStr(simH) + " · simulated");
+  const p = price(simH), w = wind(simH);
+  set("k-price", fmt(p, 0)); set("k-wind", fmt(w * 100, 0));
+  const iron = SITES.reduce((a, s) => a + s.dev.revenue - s.dev.cost, 0), li = SITES.reduce((a, s) => a + s.li.net, 0);
+  set("k-iron", fmt(iron, 0)); set("k-li", fmt(li, 0)); set("k-adv", (iron - li >= 0 ? "+" : "") + fmt(iron - li, 0));
+  $("#marketChart").innerHTML = marketChart();
+  for (const s of SITES) {
+    const l = s.cloud.latest || {}, c = s.cloud;
+    set(`${s.key}-soc`, fmt(l.soc_pct)); set(`${s.key}-pw`, fmt(l.power_kw)); set(`${s.key}-sp`, fmt(l.setpoint_kw)); set(`${s.key}-tp`, fmt(l.temp_max_c));
+    set(`${s.key}-state`, (l.state || "–") + (c.mode !== "idle" && $("#auto").checked ? ` · auto: ${c.mode}` : ""));
+    set(`${s.key}-rp`, String(c.replayed)); set(`${s.key}-rev`, fmt(s.dev.revenue - s.dev.cost, 0));
+    set(`${s.key}-buf`, String(s.gw.buffer.length));
+    document.getElementById(`${s.key}-socbar`).style.width = (l.soc_pct || 0) + "%";
+    const pill = document.getElementById(`${s.key}-pill`);
+    const stale = !c.online ? ["badc", "offline · Last Will"] : s.gw.replaying ? ["rep", "replaying backlog"] : ["ok", "online · mTLS"];
+    pill.className = "pill " + stale[0]; pill.textContent = stale[1];
+    const wan = document.getElementById(`${s.key}-l-wan`); wan.classList.toggle("down", !s.wan.up); wan.classList.toggle("ok", s.wan.up);
+    set(`${s.key}-wanl`, s.wan.up ? "MQTT mTLS" : "WAN DOWN");
+    const cut = document.getElementById(`${s.key}-cut`); cut.textContent = s.wan.up ? "✂ Cut WAN" : "↻ Restore WAN";
+    document.getElementById(`${s.key}-alarms`).innerHTML = (l.alarms || []).map((a) => `<span class="chip">${esc(a)}</span>`).join("")
+      + (s.dev.faultMin > 0 ? '<span class="chip m">local safety: contactor open</span>' : "");
+    document.getElementById(`${s.key}-chart`).innerHTML = siteChart(s);
+  }
+  renderInspector();
+  if (logDirty && Date.now() - lastLogRender > 250) {
+    lastLogRender = Date.now(); logDirty = false;
+    $("#log").innerHTML = fleetEvents.length ? fleetEvents.map((e) => `<div class="ev ${e.level}"><div class="t">${new Date(e.ts).toLocaleTimeString()} · ${e.clock} · ${esc(e.site)}</div>${esc(e.text)}</div>`).join("") : '<div class="empty">No events yet</div>';
+  }
+}
+
+/* ====================================================================== guided demo */
+let demoRun = 0;
+function focusEl(id) { const e = document.getElementById(id); if (!e) return; e.scrollIntoView({ block: "center" }); e.classList.remove("hl"); void e.offsetWidth; e.classList.add("hl"); }
+async function playDemo() {
+  const me = ++demoRun, alive = () => me === demoRun, S = SITES;
+  const wait = async (ms) => { const end = Date.now() + ms; while (Date.now() < end) { if (!alive()) throw "stop"; await sleep(80); } };
+  const say = (n, t, focus) => { $("#capN").textContent = `STEP ${n}/7`; $("#capT").textContent = t; $("#caption").classList.add("on"); if (focus) focusEl(focus); };
+  $("#demoBtn").disabled = true;
+  try {
+    paused = false; setSpeed(60); $("#auto").checked = false;
+    S.forEach((s) => { if (!s.wan.up) toggleWan(s); s.cloud.mode = "idle"; });
+    say(1, "Two iron-air containers speak Modbus on an isolated site network. A gateway per site normalises the data and publishes it over mutual-TLS MQTT. Modbus never touches the WAN.", "sites"); await wait(9000);
+    say(2, "Manual control: a 300 kW setpoint. The cloud signs it, the gateway verifies 7 checks, then writes it to the device over Modbus.", "s1");
+    sendCommand(S[0], "get_diagnostics", null); await wait(1500); sendCommand(S[0], "set_power_kw", 300); await wait(1500); focusEl("guardCard"); await wait(5500);
+    say(3, "Every command is untrusted input. Watch each attack die at a different check.", "s1");
+    for (const v of ["out_of_range", "expired", "bad_signature", "tampered", "not_allowed", "wrong_site", "replay"]) { sendCommand(S[0], "set_power_kw", 120, v); await wait(1900); }
+    await wait(1500);
+    say(4, "WAN outage on site 01. The Last Will marks it offline; the gateway keeps sampling to its disk buffer. I also send a command into the outage…", "s1");
+    toggleWan(S[0]); await wait(3800); sendCommand(S[0], "set_power_kw", 150); await wait(10000);
+    say(5, "Link restored: the buffered samples replay in order (purple), nothing lost. The queued command arrives late and is rejected as expired, so a stale command never fires.", "s1");
+    toggleWan(S[0]); await wait(11000);
+    say(6, "Identity attacks: no certificate and a forged certificate die at the TLS handshake. A stolen site-02 identity cannot speak for site-01.", "idCard");
+    for (const k of ["nocert", "forged", "spoof", "control"]) { tlsAttack(k); await wait(3500); }
+    say(7, "Now the business case: the optimizer trades the price signal through that same secure pipeline. A 100 h battery rides the calm-wind spell that a 4 h battery cannot.", "market");
+    S.forEach((s) => { s.dev.revenue = 0; s.dev.cost = 0; s.li.rev = 0; s.li.cost = 0; });
+    $("#auto").checked = true; S.forEach((s) => { s.cloud.mode = "idle"; s.nextOpt = 0; }); setSpeed(240); await wait(42000);
+    say(7, "Comparison above: same power, same prices, same rule. Only the storage duration differs. That is where multi-day storage earns its keep.", "market"); await wait(9000);
+  } catch (e) { if (e !== "stop") throw e; }
+  finally { if (alive()) $("#caption").classList.remove("on"); $("#demoBtn").disabled = false; }
+}
+function setSpeed(v) { speed = v; $("#speed").value = String(v); }
+
+/* ====================================================================== boot */
+function warmup() {
+  warm = true;
+  for (const s of SITES) { s.dev.p = 0; s.nextOpt = 0; }
+  simH = 0;
+  while (simH < WARM_H) substep(15);
+  for (const s of SITES) { s.dev.revenue = 0; s.dev.cost = 0; s.li.rev = 0; s.li.cost = 0; s.cloud.replayed = 0; s.gw.seq = 0; }
+  warm = false; fleetEvents = [];
+}
+async function boot() {
+  buildSites(); renderDecision();
+  $("#speed").onchange = (e) => (speed = Number(e.target.value));
+  $("#pause").onclick = (e) => { paused = !paused; e.target.textContent = paused ? "Resume" : "Pause"; };
+  $("#demoBtn").onclick = playDemo;
+  $("#capStop").onclick = () => { demoRun++; $("#caption").classList.remove("on"); $("#demoBtn").disabled = false; };
+  $("#inspSite").onchange = renderInspector;
+  $("#auto").onchange = (e) => log(null, e.target.checked ? "Auto-dispatch ON: optimizer will send signed setpoints." : "Auto-dispatch OFF: sites hold their last setpoint.", "info");
+  if (!(crypto && crypto.subtle)) { $("#fp").textContent = "WebCrypto unavailable: open over HTTPS"; return; }
+  await initKeys();
+  warmup();
+  log(null, "Fleet online. Cloud optimizer is dispatching on the day-ahead price.", "good");
+  setInterval(frame, 250); frame();
+}
+boot();
+</script>
+</body>
+</html>
